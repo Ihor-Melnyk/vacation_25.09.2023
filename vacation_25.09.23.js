@@ -28,15 +28,35 @@ function validationDate(dateFrom, dateTo, error) {
   }
 }
 
-function validationDateFrom(dateFrom, dateOfApplication) {
+function getWorkDayCount(dateFrom, dateTo) {
   debugger;
-  if (
-    getDaysFromTo(
-      dateFrom,
-      dateOfApplication,
-      "Введені значення некоректні. Дата початку відпустки не може бути раніше дати заяви"
-    ) <= 5
-  ) {
+  if (dateFrom >= dateTo) return 0;
+  var date = new Date(dateFrom);
+  var count = 0;
+
+  while (date < dateTo) {
+    var currentDay = date.getDay();
+    date.setDate(date.getDate() + 1);
+
+    if (date > dateFrom && date.valueOf() == dateTo.valueOf()) {
+      break;
+    }
+    if (currentDay === 6 || currentDay === 7) {
+      continue;
+    }
+    count++;
+  }
+  return count;
+}
+
+function validationDateFrom(dateFrom, dateTo) {
+  debugger;
+  validationDate(
+    dateFrom,
+    dateTo,
+    "Введені значення некоректні. Дата початку відпустки не може бути раніше дати заяви"
+  );
+  if (getWorkDayCount(new Date(dateFrom), new Date(dateTo)) < 5) {
     throw "Введені значення некоректні. Заяву на відпустку можливо створити не пізніше ніж за 5 робочих днів. до дати початку відпустки";
   }
 }
@@ -62,7 +82,7 @@ function setVacationDays() {
     var attrDateOfApplication = EdocsApi.getAttributeValue("DateOfApplication");
     if (attrDateOfApplication.value) {
       var attrRegistrationType = EdocsApi.getAttributeValue("RegistrationType");
-      if (attrRegistrationType.value && attrRegistrationType.value == "ФОП") {
+      if (attrRegistrationType.value && attrRegistrationType.value == "Штат") {
         validationDateFrom(attrDateOfApplication.value, attrdateSince.value);
       }
       setAttrValue(
@@ -88,8 +108,52 @@ function setInitiatorOrg() {
   setAttrValue("RegistrationType", empoyeeData.phone1);
   setAttrValue("InitiatorOrg", empoyeeData.phone3);
   setAttrValue("DateOfApplication", new Date());
+  setAttrValue(
+    "initiatorNameSurnameForOrder",
+    setLoverCaseName(empoyeeData.nameSurname)
+  );
+}
+
+function setLoverCaseName(nameSurname) {
+  var arr = nameSurname?.split(" ");
+  return `${arr[0]} ${arr[1].toUpperCase()}`;
+}
+
+function setEmployeeManagers() {
+  var unitLevel = EdocsApi.getEmployeeDataByEmployeeID(
+    CurrentDocument.initiatorId
+  ).unitLevel;
+  var result = [];
+  var resultText = "";
+
+  while (unitLevel > 0) {
+    var boss = EdocsApi.getEmployeeManagerByEmployeeID(
+      CurrentDocument.initiatorId,
+      unitLevel
+    );
+
+    if (boss && boss.employeeId != CurrentDocument.initiatorId) {
+      result.push({
+        employeeId: boss.employeeId,
+        employeeName: boss.shortName,
+        id: 0,
+        index: result.length,
+        positionName: boss.positionName,
+      });
+
+      resultText += boss.shortName + "\n";
+    }
+
+    unitLevel--;
+  }
+  var attrEmployeeManagers = EdocsApi.getAttributeValue("EmployeeManagers");
+
+  attrEmployeeManagers.value = JSON.stringify(result);
+  attrEmployeeManagers.text = resultText;
+  EdocsApi.setAttributeValue(attrEmployeeManagers);
 }
 
 function onBeforeCardSave() {
   setVacationDays();
+  setEmployeeManagers();
 }
